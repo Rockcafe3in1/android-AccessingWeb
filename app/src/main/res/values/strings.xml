@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">android-AccessingWeb</string>
+
+    <string name="hello_world">Hello world!</string>
+    <string name="action_settings">Settings</string>
+    <string name="body_header">This is head of content body</string>
+</resources>
