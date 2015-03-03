@@ -5,7 +5,10 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Message;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.TextView;
@@ -13,7 +16,36 @@ import android.widget.TextView;
 
 public class AccessingWeb extends Activity {
 
+    private static final String TAG = "AccessingWeb";
+    private static final int MSG_ON_RECEIVED_NEW_WEB = 1000;
     private AccessingWebService.AccessingWebBinder mAwBinder;
+    private TextView mWebPageText;
+    private Handler mAccessingWebHandler;
+    private StringBuffer mWebpageContainer;
+    /* Create interface to get feedback from AccessWebService */
+    private OnWebPageReceivedListener mWebPageReceivedListener = new OnWebPageReceivedListener() {
+
+        /**
+         * Receive web page data
+         *
+         * @param webPage the textual form of web page
+         * */
+        @Override
+        public void onReceived(StringBuffer webPage) {
+            // Only the original thread that created a view hierarchy
+            // can touch its views. It throws CalledFromWrongThreadException
+
+            // TODO: post web page by message handler
+            // Tell main thread to access web page
+            // from WebpageContainer
+            Message msg = new Message();
+            msg.arg1 = MSG_ON_RECEIVED_NEW_WEB;
+            // TODO: synchronizing data and UI
+            mWebpageContainer = webPage;
+            mAccessingWebHandler.sendMessage(msg);
+//            mWebPageText.setText(webPage.toString());
+        }
+    };
     private ServiceConnection mServiceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
@@ -21,7 +53,12 @@ public class AccessingWeb extends Activity {
             // Obtain targeting service 'communication channel'
             // Convert IBinder to instance of AccessingWebService
             mAwBinder = (AccessingWebService.AccessingWebBinder) service;
-            updateWebPage();
+
+            // Setup feedback channel to get web page from service
+            mAwBinder.registerFeedBack(mWebPageReceivedListener);
+
+            // Everything is ok now
+            visitWebPage(mAwBinder);
         }
 
         @Override
@@ -30,7 +67,9 @@ public class AccessingWeb extends Activity {
             mAwBinder = null;
         }
     };
-    private TextView mWebPageText;
+
+    public AccessingWeb() {
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,6 +77,19 @@ public class AccessingWeb extends Activity {
         setContentView(R.layout.activity_accessing_web);
 
         mWebPageText = (TextView) findViewById(R.id.webpage);
+
+        // TODO: To solve wrong thread exception in onReceived method
+        // using message handle to update text view in main thread
+        mAccessingWebHandler = new Handler(new Handler.Callback() {
+            @Override
+            public boolean handleMessage(Message msg) {
+                if (msg.arg1 == MSG_ON_RECEIVED_NEW_WEB) {
+                    // synchronized accessing
+                    mWebPageText.setText(mWebpageContainer.toString());
+                }
+                return false;
+            }
+        });
 
         // Demonstrating purpose do not run it in main thread
         // Unfortunately it throw android.os.NetworkOnMainThreadException
@@ -48,16 +100,19 @@ public class AccessingWeb extends Activity {
         // bindService() and unBindService();
         Intent intent = new Intent();
         intent.setPackage(this.getPackageName());
-        intent.setClassName(this, "AccessingWebService");
+        intent.setClassName(this, this.getPackageName() + ".AccessingWebService");
         intent.putExtra(AccessingWebService.ADDRESS_INTENT_EXTR, "http://www.vogella.com");
-        // TODO: Check if class name is correct one
-        bindService(intent, mServiceConnection, BIND_AUTO_CREATE);
+        // TODO: Check the if the class name is correct
+        if (!bindService(intent, mServiceConnection, BIND_AUTO_CREATE)) {
+            Log.i(TAG, "Cannot bind service: " + intent.getClass().getName());
+        }
+
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        updateWebPage();
+        visitWebPage(mAwBinder);
     }
 
     @Override
@@ -67,13 +122,23 @@ public class AccessingWeb extends Activity {
     }
 
     /**
-     * Update web page in textual format
-     * */
-    private void updateWebPage() {
-        CharSequence charSequence = null;
-        if (mAwBinder != null) {
-            charSequence = (CharSequence) mAwBinder.getService().accessWeb();
-            mWebPageText.setText(charSequence);
+     * Update web page in textual format to main screen
+     *
+     * @param awBinder the binder which is originally from service
+     */
+    private void visitWebPage(AccessingWebService.AccessingWebBinder awBinder) {
+        if (awBinder != null) {
+
+            // TODO: Catch unhandled exception in method accessWeb.
+            // ISSUE: It still throws android.os.NetworkOnMainThreadException
+            // However HttpURLConnection and URL class already encapsulated
+            // in Service without in main thread. So what's wrong?
+
+            // Performing internet operation in working thread
+            awBinder.accessWebInWorkerThread();
+//            mAwBinder.runLongTimeOperation();
+//            charSequence = (CharSequence) mAwBinder.getService().accessWeb();
+//            mWebPageText.setText(charSequence);
         }
     }
 

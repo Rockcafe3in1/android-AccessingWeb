@@ -32,6 +32,7 @@ public class AccessingWebService extends Service {
 //    private AccessingWebService mawService;
     private String mWebPageAddress;
     private AccessingWebBinder mBinder;
+    private OnWebPageReceivedListener mWebPageGenerated;
 
     public AccessingWebService() {
 //        mawService = new AccessingWebService();
@@ -46,31 +47,25 @@ public class AccessingWebService extends Service {
     @Override
     public IBinder onBind(Intent intent) {
         // TODO: Return the communication channel to the service.
-
         mWebPageAddress = intent.getStringExtra(ADDRESS_INTENT_EXTR);
         if(!isLegalAddress(mWebPageAddress)) {
             return null;
         }
 
         // Encapsulating instance of AccessingWebService into IBinder
-        // Declare subclass which is inherilization from IBinder
-        return (IBinder)mBinder;
-    }
-
-    public class AccessingWebBinder extends Binder {
-        // Declare method accessed by 'client'
-        public AccessingWebService getService() {
-            // Return this instance of AccessingWebService
-            return AccessingWebService.this;
-        }
-
+        // Declare subclass which is inheriachize from IBinder
+        return mBinder;
     }
 
     private boolean isLegalAddress(String webPageAddress) {
         // Prefix must be 'http://' or 'https://'
+        webPageAddress = null;
         return true;
     }
 
+    /**
+     * Fetch web pages from internet
+     */
     public StringBuffer accessWeb() {
         StringBuffer webPage = null;
 
@@ -80,7 +75,7 @@ public class AccessingWebService extends Service {
             URL url = new URL(mWebPageAddress);
 
             // Obtaining instance of HttpURLConnection
-            HttpURLConnection con = (HttpURLConnection)url.openConnection();
+            HttpURLConnection con = (HttpURLConnection) url.openConnection();
 
             // Read web page and printed on screen
             webPage = readStream(con.getInputStream());
@@ -96,20 +91,20 @@ public class AccessingWebService extends Service {
 
     /**
      * Read input stream and print it on screen by line
-     * */
+     */
     private StringBuffer readStream(InputStream webPageStream) {
-        StringBuffer stringBufferContainer = null;
+        StringBuffer bufferContainer = new StringBuffer();
         BufferedReader reader = null;
 
         reader = new BufferedReader(new InputStreamReader(webPageStream));
         String line = "";
         try {
-            while((line = reader.readLine()) != null) {
+            while ((line = reader.readLine()) != null) {
                 System.out.println(line);
 
                 // TODO: Printing it on screen
                 // Feedback web page in text format to main activity
-                stringBufferContainer.append(line);
+                bufferContainer.append(line);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -123,6 +118,63 @@ public class AccessingWebService extends Service {
             }
         }
 
-        return stringBufferContainer;
+        return bufferContainer;
+    }
+
+    public class AccessingWebBinder extends Binder {
+        /**
+         * Declare method accessed by 'client'
+         */
+        public AccessingWebService getService() {
+            // Return this instance of AccessingWebService
+            return AccessingWebService.this;
+        }
+
+        /**
+         * Debugging purpose, will be deleted soon
+         *
+         * @throws android.os.NetworkOnMainThreadException
+         */
+        public void runLongTimeOperation() {
+
+            // That means if accessWeb method was executed
+            // in main ui thread, android runtime will throw
+            // android.os.NetworkOnMainThreadException
+            accessWeb();    /* Debugging only will be deleted soon */
+        }
+
+        /**
+         * Access web pages and fetch textual data
+         */
+        public void accessWebInWorkerThread() {
+            // Got suggestions that it can create a new thread
+            // to hold accessWeb method
+
+            // TODO: Create new thread and launch accessWeb method
+            Thread accessWeb = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    // Performing operation from internet
+                    // TODO: Consider the way to receive data of web page
+                    StringBuffer webPageReceived = null;
+                    webPageReceived = accessWeb();
+
+                    // Tell AccessingWebService's message handler
+                    // that we got new message from web
+                    // NO! seems there is no need of Message handler
+                    if (webPageReceived != null) {
+                        mWebPageGenerated.onReceived(webPageReceived);
+                    }
+                }
+            });
+            accessWeb.start();
+        }
+
+        /**
+         *
+         * */
+        public void registerFeedBack(OnWebPageReceivedListener webPageListener) {
+            mWebPageGenerated = webPageListener;
+        }
     }
 }
